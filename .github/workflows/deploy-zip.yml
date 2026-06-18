@@ -1,106 +1,100 @@
 name: Deploy ZIP Website
 
 on:
-push:
-branches:
-- main
-workflow_dispatch:
-schedule:
-- cron: "0 */6 * * *"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
 
 permissions:
-contents: read
-pages: write
-id-token: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
-environment:
-name: github-pages
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
 
-steps:
-  - name: Checkout
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  - name: Unzip website
-    run: |
-      rm -rf site
-      mkdir site
-      unzip -o website.zip -d site
+      - name: Unzip website
+        run: |
+          rm -rf site
+          mkdir site
+          unzip -o website.zip -d site
 
-  - name: Generate busy dates from calendars
-    run: |
-      python3 - <<'PY'
-      import json, re, urllib.request
-      from datetime import datetime, timedelta, timezone
+      - name: Generate busy dates from calendars
+        run: |
+          python3 - <<'PY'
+          import json, re, urllib.request
+          from datetime import datetime, timedelta, timezone
 
-      ICS_URLS = [
-          "https://ical.booking.com/v1/export?t=9438b8e2-93d9-4009-be66-88f007b6bbc2",
-          "https://www.airbnb.com/calendar/ical/1459695479210761422.ics?t=8b0f0e57d5cc465aaeb4612c86071e1f&locale=hr"
-      ]
+          ICS_URLS = [
+              "https://ical.booking.com/v1/export?t=9438b8e2-93d9-4009-be66-88f007b6bbc2",
+              "https://www.airbnb.com/calendar/ical/1459695479210761422.ics?t=8b0f0e57d5cc465aaeb4612c86071e1f&locale=hr"
+          ]
 
-      def parse_date(s):
-          return datetime.strptime(s[:8], "%Y%m%d").date()
+          def parse_date(s):
+              return datetime.strptime(s[:8], "%Y%m%d").date()
 
-      busy = []
-      loaded = 0
+          busy = []
+          loaded = 0
 
-      for url in ICS_URLS:
-          try:
-              req = urllib.request.Request(url, headers={
-                  "User-Agent": "Mozilla/5.0 (compatible; GitHubActions)",
-                  "Accept": "text/calendar,*/*"
-              })
+          for url in ICS_URLS:
+              try:
+                  req = urllib.request.Request(url, headers={
+                      "User-Agent": "Mozilla/5.0 (compatible; GitHubActions)",
+                      "Accept": "text/calendar,*/*"
+                  })
+                  text = urllib.request.urlopen(req, timeout=60).read().decode("utf-8", "ignore")
+                  text = re.sub(r"\r?\n[ \t]", "", text)
 
-              text = urllib.request.urlopen(req, timeout=60).read().decode("utf-8", "ignore")
-              text = re.sub(r"\r?\n[ \t]", "", text)
+                  for ev in text.split("BEGIN:VEVENT")[1:]:
+                      ds = re.search(r"DTSTART(?:;[^:\n]*)?:(\d{8})", ev)
+                      de = re.search(r"DTEND(?:;[^:\n]*)?:(\d{8})", ev)
 
-              events_found = 0
+                      if not ds or not de:
+                          continue
 
-              for ev in text.split("BEGIN:VEVENT")[1:]:
-                  ds = re.search(r"DTSTART(?:;[^:\n]*)?:(\d{8})", ev)
-                  de = re.search(r"DTEND(?:;[^:\n]*)?:(\d{8})", ev)
+                      start = parse_date(ds.group(1))
+                      end = parse_date(de.group(1))
 
-                  if not ds or not de:
-                      continue
+                      d = start
+                      while d < end:
+                          busy.append(d.isoformat())
+                          d += timedelta(days=1)
 
-                  events_found += 1
+                  loaded += 1
+                  print("Calendar loaded:", url)
 
-                  start = parse_date(ds.group(1))
-                  end = parse_date(de.group(1))
+              except Exception as e:
+                  print("Calendar skipped:", url, e)
 
-                  d = start
-                  while d < end:
-                      busy.append(d.isoformat())
-                      d += timedelta(days=1)
+          out = {
+              "updated": datetime.now(timezone.utc).isoformat(),
+              "busy": sorted(set(busy))
+          }
 
-              loaded += 1
-              print("Calendar loaded:", url)
-              print("Events found:", events_found)
+          with open("site/busy-dates.json", "w", encoding="utf-8") as f:
+              json.dump(out, f, ensure_ascii=False, indent=2)
 
-          except Exception as e:
-              print("Calendar skipped:", url, e)
+          print("Calendars loaded:", loaded)
+          print("Busy dates:", len(out["busy"]))
+          PY
 
-      out = {
-          "updated": datetime.now(timezone.utc).isoformat(),
-          "busy": sorted(set(busy))
-      }
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
 
-      with open("site/busy-dates.json", "w", encoding="utf-8") as f:
-          json.dump(out, f, ensure_ascii=False, indent=2)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
 
-      print("Calendars loaded:", loaded)
-      print("Busy dates:", len(out["busy"]))
-      PY
-
-  - name: Setup Pages
-    uses: actions/configure-pages@v5
-
-  - name: Upload artifact
-    uses: actions/upload-pages-artifact@v3
-    with:
-      path: site
-
-  - name: Deploy to GitHub Pages
-    uses: actions/deploy-pages@v4
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
