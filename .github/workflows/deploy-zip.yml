@@ -16,6 +16,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
 
@@ -32,11 +33,13 @@ jobs:
       - name: Generate busy dates from calendars
         run: |
           python3 - <<'PY'
-          import json, re, urllib.request
+          import json
+          import re
+          import urllib.request
           from datetime import datetime, timedelta, timezone
 
           ICS_URLS = [
-              "https://ical.booking.com/v1/export?t=9438b8e2-93d9-4009-be66-88f007b6bbc2",
+              "https://ical.booking.com/v1/export?t=7d329d6a-3b19-4f12-aead-30de1936902f",
               "https://www.airbnb.com/calendar/ical/1459695479210761422.ics?t=8b0f0e57d5cc465aaeb4612c86071e1f&locale=hr"
           ]
 
@@ -44,20 +47,25 @@ jobs:
               return datetime.strptime(s[:8], "%Y%m%d").date()
 
           busy = []
-          loaded = 0
 
           for url in ICS_URLS:
               try:
-                  req = urllib.request.Request(url, headers={
-                      "User-Agent": "Mozilla/5.0 (compatible; GitHubActions)",
-                      "Accept": "text/calendar,*/*"
-                  })
+                  req = urllib.request.Request(
+                      url,
+                      headers={
+                          "User-Agent": "Mozilla/5.0",
+                          "Accept": "*/*"
+                      }
+                  )
+
                   text = urllib.request.urlopen(req, timeout=60).read().decode("utf-8", "ignore")
+
                   text = re.sub(r"\r?\n[ \t]", "", text)
 
-                  for ev in text.split("BEGIN:VEVENT")[1:]:
-                      ds = re.search(r"DTSTART(?:;[^:\n]*)?:(\d{8})", ev)
-                      de = re.search(r"DTEND(?:;[^:\n]*)?:(\d{8})", ev)
+                  for event in text.split("BEGIN:VEVENT")[1:]:
+
+                      ds = re.search(r"DTSTART(?:;[^:\n]*)?:(\d{8})", event)
+                      de = re.search(r"DTEND(?:;[^:\n]*)?:(\d{8})", event)
 
                       if not ds or not de:
                           continue
@@ -70,22 +78,25 @@ jobs:
                           busy.append(d.isoformat())
                           d += timedelta(days=1)
 
-                  loaded += 1
                   print("Calendar loaded:", url)
 
               except Exception as e:
                   print("Calendar skipped:", url, e)
 
-          out = {
-              "updated": datetime.now(timezone.utc).isoformat(),
-              "busy": sorted(set(busy))
-          }
+          busy = sorted(set(busy))
 
           with open("site/busy-dates.json", "w", encoding="utf-8") as f:
-              json.dump(out, f, ensure_ascii=False, indent=2)
+              json.dump(
+                  {
+                      "updated": datetime.now(timezone.utc).isoformat(),
+                      "busy": busy
+                  },
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
 
-          print("Calendars loaded:", loaded)
-          print("Busy dates:", len(out["busy"]))
+          print("Busy dates:", len(busy))
           PY
 
       - name: Setup Pages
