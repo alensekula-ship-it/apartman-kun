@@ -34,7 +34,7 @@ jobs:
           from datetime import datetime, timedelta
 
           ICS_URLS = [
-              "https://ical.booking.com/v1/export?t=b16bd93c-67f9-4d88-a2f4-e8dd126222c3",
+              "https://ical.booking.com/v1/export?t=9438b8e2-93d9-4009-be66-88f007b6bbc2",
               "https://www.airbnb.com/calendar/ical/1459695479210761422.ics?t=8b0f0e57d5cc465aaeb4612c86071e1f&locale=hr"
           ]
 
